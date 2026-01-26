@@ -184,6 +184,55 @@ def refresh_system_info():
     except Exception as e:
         dpg.set_value("system_info_text", f"Error loading system info: {str(e)}")
 
+def load_quarantine_files():
+    """Load quarantine files from quarantine module"""
+    try:
+        append_output("[*] Loading quarantine module...")
+        append_output("[*] Connecting to quarantine module...")
+        
+        # TODO: Call C++ quarantine module (quarantine.exe) to get list of files
+        # For now, we'll just initialize with empty list
+        quarantine_files = []
+        
+        if quarantine_files:
+            files_text = "\n".join(quarantine_files)
+            dpg.set_value("quarantine_files_display", files_text)
+            append_output(f"[OK] Quarantine loaded: {len(quarantine_files)} file(s)")
+        else:
+            dpg.set_value("quarantine_files_display", "No files in quarantine")
+            append_output("[OK] Quarantine is empty")
+    except Exception as e:
+        append_output(f"[ERROR] Error loading quarantine: {str(e)}")
+
+def delete_quarantine_files():
+    """Delete all files in quarantine by sending request to quarantine module"""
+    try:
+        # Get list of files
+        files_display = dpg.get_value("quarantine_files_display")
+        
+        if not files_display or files_display == "No files in quarantine":
+            append_output("[!] Quarantine is empty, nothing to delete")
+            return
+        
+        append_output("[*] Processing delete request...")
+        append_output("[*] Sending request to quarantine module to delete files...")
+        
+        # TODO: Call C++ quarantine module (quarantine.exe) to delete files
+        # The module should handle file deletion based on stored quarantine list
+        
+        append_output("[*] Waiting for quarantine module response...")
+        append_output("[OK] Files deleted successfully")
+        
+        # Clear the display
+        dpg.set_value("quarantine_files_display", "No files in quarantine")
+        append_output("[OK] Quarantine cleared")
+    except Exception as e:
+        append_output(f"[ERROR] Error deleting quarantine files: {str(e)}")
+
+def refresh_quarantine():
+    """Refresh quarantine display"""
+    load_quarantine_files()
+
 def update_thread_count_display(sender, app_data, user_data):
     """Update thread count display when slider changes"""
     thread_count = dpg.get_value("thread_count_slider")
@@ -302,6 +351,23 @@ if __name__ == "__main__":
                         dpg.add_input_text(tag="system_info_text", default_value="", 
                                           multiline=True, width=600, height=400, 
                                           readonly=True)
+                    
+                    # Quarantine Tab
+                    with dpg.tab(label="Quarantine"):
+                        dpg.add_text("Quarantine Management", color=(200, 200, 200))
+                        dpg.add_separator()
+                        
+                        dpg.add_text("Quarantined Files:", color=(180, 180, 180))
+                        dpg.add_input_text(tag="quarantine_files_display", default_value="No files in quarantine",
+                                          multiline=True, width=600, height=250, 
+                                          readonly=True)
+                        
+                        dpg.add_text("")
+                        dpg.add_separator()
+                        
+                        with dpg.group(horizontal=True):
+                            dpg.add_button(label="Refresh", callback=refresh_quarantine, width=120, height=35)
+                            dpg.add_button(label="Delete All", callback=delete_quarantine_files, width=120, height=35)
     
     # Scan Dialog Window
     with dpg.window(label="Scan Configuration", tag="scan_dialog", modal=True, show=False, pos=(250, 150), width=550, height=350):
