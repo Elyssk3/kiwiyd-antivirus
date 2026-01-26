@@ -1,0 +1,22 @@
+{
+    "scan": {
+        "default_mode": "Fast Scan",
+        "enable_auto_scan": false,
+        "auto_scan_time": "00:00",
+        "auto_scan_path": "C:\\",
+        "auto_scan_mode": "Fast Scan",
+        "thread_count": 4
+    },
+    "quarantine": {
+        "auto_quarantine": true,
+        "auto_delete_after_days": 30
+    },
+    "updates": {
+        "auto_update": true,
+        "update_check_interval": 24
+    },
+    "notifications": {
+        "enable_notifications": true,
+        "show_scan_results": true
+    }
+}
