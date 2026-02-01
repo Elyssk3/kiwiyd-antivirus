@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
 from settings import Settings
 from system_info import SystemInfo
 from scanner import initialize_scanner
+from i18n import init_translator, get_translator, set_language
 
 # Try to import win10toast for notifications
 try:
@@ -21,17 +22,97 @@ except ImportError:
 # Initialize DearPyGui
 dpg.create_context()
 
+# Setup Unicode font support for Cyrillic (Russian)
+# Get system fonts path
+fonts_path = "C:/Windows/Fonts/"
+
+# Try to load a system font that supports Cyrillic
+# Segoe UI is available on most Windows systems and supports Cyrillic
+default_font_path = fonts_path + "segoeui.ttf"
+fallback_font_path = fonts_path + "arial.ttf"
+
+font_path = None
+if os.path.exists(default_font_path):
+    font_path = default_font_path
+elif os.path.exists(fallback_font_path):
+    font_path = fallback_font_path
+
+default_font = None
+if font_path:
+    with dpg.font_registry():
+        # Load font with Cyrillic support
+        default_font = dpg.add_font(font_path, 14)
+        # Add glyph range for Cyrillic (Russian)
+        dpg.add_font_range_hint(dpg.mvFontRangeHint_Cyrillic, parent=default_font)
+
+# Initialize translator
+init_translator()
+translator = get_translator()
+
 # Global variables
-output_text = "Welcome to Kiwiyd Antivirus\nSelect an action to begin...\n"
+output_text = ""
 settings = Settings()
+
+# Load language from settings
+saved_language = settings.get("ui.language", "en")
+translator.set_language(saved_language)
+
+# Set welcome message based on language
+if translator.get_language() == "ru":
+    output_text = "Добро пожаловать в Киви Антивирус\nВыберите действие для начала...\n"
+else:
+    output_text = "Welcome to Kiwiyd Antivirus\nSelect an action to begin...\n"
+
 scanner = None
 scan_thread = None
 scan_stats = {"files_scanned": 0, "threats_found": 0}  # Track scan statistics
 
+def t(key: str, default: str = None) -> str:
+    """Shorthand for translator.t()"""
+    return translator.t(key, default)
+
+def get_message_color(message: str) -> tuple:
+    """Get color for message display (for future rich text support)
+    
+    Args:
+        message: Log message
+        
+    Returns:
+        RGB tuple (r, g, b) with values 0-255
+    """
+    if "[OK]" in message or "✓" in message:
+        return (76, 175, 80)  # Green
+    elif "[ERROR]" in message or "✗" in message:
+        return (244, 67, 54)  # Red
+    elif "[!]" in message or "THREAT" in message.upper() or "⚠️" in message:
+        return (255, 152, 0)  # Orange
+    elif "[*]" in message:
+        return (33, 150, 243)  # Blue
+    else:
+        return (200, 200, 200)  # Gray (default)
+
+
 def append_output(message: str):
-    """Append message to output display"""
+    """Append message to output display with visual formatting
+    
+    Args:
+        message: Log message to display
+    """
     global output_text
-    output_text += message + "\n"
+    
+    # Add visual formatting based on message type
+    if "[OK]" in message or "✓" in message:
+        formatted_msg = f"✓ {message}"
+    elif "[ERROR]" in message or "✗" in message:
+        formatted_msg = f"✗ {message}"
+    elif "[!]" in message or "THREAT" in message.upper():
+        formatted_msg = f"⚠️  {message}"
+    else:
+        formatted_msg = message
+    
+    output_text += formatted_msg + "\n"
+    
+    # Update display
     if dpg.does_item_exist("output_text"):
         dpg.set_value("output_text", output_text)
 
@@ -438,12 +519,51 @@ def cancel_time_picker():
     """Cancel time picker"""
     dpg.hide_item("time_picker_dialog")
 
+def refresh_ui_language():
+    """Refresh all UI text labels and buttons for language change"""
+    try:
+        # Update tab labels
+        dpg.set_item_label("tab_scan_output", t("ui.tab.scan_output"))
+        dpg.set_item_label("tab_settings", t("ui.tab.settings"))
+        dpg.set_item_label("tab_system_info", t("ui.tab.system_info"))
+        dpg.set_item_label("tab_quarantine", t("ui.tab.quarantine"))
+        
+        # Update system info
+        refresh_system_info()
+        
+        # Update quarantine display
+        refresh_quarantine()
+    except Exception as e:
+        append_output(f"Error refreshing UI language: {str(e)}")
+
+
+def change_language(sender, app_data):
+    """Change application language"""
+    try:
+        selected_language = app_data
+        
+        # Set language in translator
+        if translator.set_language(selected_language):
+            # Save to settings
+            settings.set("ui.language", selected_language)
+            
+            # Update UI text in real-time
+            lang_name = translator.get_language_name(selected_language)
+            append_output(f"✓ {t('ui.message.language_changed')} {lang_name}")
+            
+            # Refresh UI elements
+            refresh_ui_language()
+        else:
+            append_output(f"✗ {t('ui.message.language_change_error')} {selected_language}")
+    except Exception as e:
+        append_output(f"✗ Error changing language: {str(e)}")
+
 if __name__ == "__main__":
     # Create window with proper layout
-    with dpg.window(label="Kiwiyd Antivirus", tag="main_window", no_close=False, pos=(100, 100)):
+    with dpg.window(label=t("app.title"), tag="main_window", no_close=False, pos=(100, 100)):
         # Title
-        dpg.add_text("Kiwiyd Antivirus", color=(200, 200, 200))
-        dpg.add_text("Antivirus Scanner", color=(150, 150, 150))
+        dpg.add_text(t("app.title"), color=(200, 200, 200))
+        dpg.add_text(t("ui.label.select_directory", "Antivirus Scanner"), color=(150, 150, 150))
         
         dpg.add_separator()
         
@@ -454,24 +574,32 @@ if __name__ == "__main__":
                 dpg.add_text("Actions", color=(200, 200, 200))
                 dpg.add_separator()
                 
-                dpg.add_button(label="Start Scan", callback=start_scan, width=200, height=50)
+                dpg.add_button(label=t("ui.button.scan", "Start Scan"), callback=start_scan, width=200, height=50)
                 dpg.add_text("")  # Spacer
                 
-                dpg.add_button(label="Exit", callback=quit_app, width=200, height=50)
+                dpg.add_button(label=t("ui.button.exit", "Exit"), callback=quit_app, width=200, height=50)
             
             # RIGHT COLUMN - Tabs
             with dpg.group(tag="right_panel"):
                 with dpg.tab_bar():
                     # Scan Output Tab
-                    with dpg.tab(label="Scan Output"):
-                        dpg.add_text("Output Log:")
-                        dpg.add_input_text(tag="output_text", default_value=output_text, 
-                                          multiline=True, width=600, height=450, 
-                                          readonly=True)
+                    with dpg.tab(label=t("ui.tab.scan_output"), tag="tab_scan_output"):
+                        dpg.add_text(t("ui.label.output_log"))
+                        
+                        # Multiline output display with visual formatting
+                        dpg.add_input_text(
+                            default_value="",
+                            width=600,
+                            height=450,
+                            readonly=True,
+                            tag="output_text",
+                            multiline=True
+                        )
+                    
                     
                     # Settings Tab
-                    with dpg.tab(label="Settings"):
-                        dpg.add_text("Application Settings", color=(200, 200, 200))
+                    with dpg.tab(label=t("ui.tab.settings"), tag="tab_settings"):
+                        dpg.add_text(t("ui.label.settings"), color=(200, 200, 200))
                         dpg.add_separator()
                         
                         dpg.add_text("Scan Settings:", color=(180, 180, 180))
@@ -506,13 +634,28 @@ if __name__ == "__main__":
                         dpg.add_text("")
                         
                         dpg.add_separator()
+                        dpg.add_text("Language:", color=(180, 180, 180))
+                        languages = translator.get_supported_languages()
+                        language_items = [f"{code}: {name}" for code, name in languages.items()]
+                        current_language = translator.get_language()
+                        current_display = f"{current_language}: {languages[current_language]}"
+                        dpg.add_combo(
+                            items=language_items,
+                            default_value=current_display,
+                            tag="language_combo",
+                            width=300,
+                            callback=lambda s, v: change_language(s, v.split(":")[0].strip())
+                        )
+                        dpg.add_text("")
+                        
+                        dpg.add_separator()
                         with dpg.group(horizontal=True):
                             dpg.add_button(label="Save Settings", callback=save_settings_callback, width=150, height=35)
                             dpg.add_button(label="Reset to Defaults", callback=reset_settings_callback, width=150, height=35)
                     
                     # System Info Tab
-                    with dpg.tab(label="System Info"):
-                        dpg.add_text("System Information", color=(200, 200, 200))
+                    with dpg.tab(label=t("ui.tab.system_info"), tag="tab_system_info"):
+                        dpg.add_text(t("ui.label.system_information"), color=(200, 200, 200))
                         dpg.add_separator()
                         dpg.add_button(label="Refresh", callback=refresh_system_info, width=100, height=30)
                         dpg.add_text("")
@@ -521,8 +664,8 @@ if __name__ == "__main__":
                                           readonly=True)
                     
                     # Quarantine Tab
-                    with dpg.tab(label="Quarantine"):
-                        dpg.add_text("Quarantine Management", color=(200, 200, 200))
+                    with dpg.tab(label=t("ui.tab.quarantine"), tag="tab_quarantine"):
+                        dpg.add_text(t("ui.label.quarantine_management"), color=(200, 200, 200))
                         dpg.add_separator()
                         
                         dpg.add_text("Quarantined Files:", color=(180, 180, 180))
@@ -634,6 +777,13 @@ if __name__ == "__main__":
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("main_window", True)
+    
+    # Apply font to main window if available
+    if font_path and 'default_font' in locals():
+        try:
+            dpg.bind_font(default_font)
+        except Exception:
+            pass  # If binding fails, continue with default font
     
     # Load system information on startup
     refresh_system_info()

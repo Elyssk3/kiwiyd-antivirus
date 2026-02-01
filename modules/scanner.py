@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Callable, List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from i18n import get_translator
 
 
 @dataclass
@@ -109,6 +110,7 @@ class FileScanner:
         self.lock = threading.Lock()
         self.total_files_scanned = 0
         self.total_threats_found = 0
+        self.translator = get_translator()  # Add translator reference
     
     def log(self, message: str):
         """Log a message

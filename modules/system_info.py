@@ -5,6 +5,7 @@ import subprocess
 from typing import Dict
 import ctypes
 from ctypes import wintypes
+from i18n import get_translator
 
 class SystemInfo:
     """System information collector"""
@@ -214,6 +215,9 @@ class SystemInfo:
     @staticmethod
     def format_info_display() -> str:
         """Format all info for display"""
+        translator = get_translator()
+        t = translator.t  # Get translation function
+        
         all_info = SystemInfo.get_all_info()
         display_text = ""
         
