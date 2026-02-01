@@ -5,7 +5,8 @@
         "auto_scan_time": "00:00",
         "auto_scan_path": "C:\\",
         "auto_scan_mode": "Fast Scan",
-        "thread_count": 4
+        "thread_count": 1,
+        "last_selected_path": "C:\\Users\\elyss\\kiwiyd-antivirus"
     },
     "quarantine": {
         "auto_quarantine": true,

@@ -2,12 +2,21 @@ import dearpygui.dearpygui as dpg
 import subprocess
 import os
 import sys
+import threading
 
 # Add modules directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
 
 from settings import Settings
 from system_info import SystemInfo
+from scanner import initialize_scanner
+
+# Try to import win10toast for notifications
+try:
+    from win10toast import ToastNotifier
+    NOTIFICATIONS_AVAILABLE = True
+except ImportError:
+    NOTIFICATIONS_AVAILABLE = False
 
 # Initialize DearPyGui
 dpg.create_context()
@@ -15,6 +24,9 @@ dpg.create_context()
 # Global variables
 output_text = "Welcome to Kiwiyd Antivirus\nSelect an action to begin...\n"
 settings = Settings()
+scanner = None
+scan_thread = None
+scan_stats = {"files_scanned": 0, "threats_found": 0}  # Track scan statistics
 
 def append_output(message: str):
     """Append message to output display"""
@@ -23,12 +35,65 @@ def append_output(message: str):
     if dpg.does_item_exist("output_text"):
         dpg.set_value("output_text", output_text)
 
+def show_scan_notification(threats_found: int, files_scanned: int):
+    """Show Windows notification when scan completes
+    
+    Args:
+        threats_found: Number of threats detected
+        files_scanned: Total files scanned
+    """
+    if not NOTIFICATIONS_AVAILABLE:
+        return
+    
+    try:
+        toaster = ToastNotifier()
+        
+        if threats_found > 0:
+            title = "⚠️ Kiwiyd Antivirus - Threats Found!"
+            message = f"Scan complete: {threats_found} threat(s) detected in {files_scanned} files"
+        else:
+            title = "✓ Kiwiyd Antivirus - Scan Complete"
+            message = f"Scan safe: No threats found in {files_scanned} files"
+        
+        toaster.show_toast(
+            title=title,
+            msg=message,
+            duration=5,
+            threaded=True
+        )
+    except Exception as e:
+        append_output(f"[!] Could not show notification: {str(e)}")
+
 def browse_directory(sender, app_data):
     """Handle directory selection from file browser"""
-    selected_path = app_data.get("file_path_name", "")
+    # app_data can be a dict or list depending on DearPyGui version
+    selected_path = ""
+    try:
+        if isinstance(app_data, dict):
+            selected_path = app_data.get("file_path_name", "") or app_data.get("file_path", "")
+        elif isinstance(app_data, (list, tuple)):
+            selected_path = app_data[0] if app_data else ""
+        else:
+            selected_path = str(app_data)
+    except Exception:
+        selected_path = ""
+
     if selected_path:
         dpg.set_value("scan_path_input", selected_path)
         append_output(f"✓ Directory selected: {selected_path}")
+        # Save this selection as the last used scan path
+        try:
+            settings.set("scan.last_selected_path", selected_path)
+        except Exception:
+            pass
+        # Ensure the scan dialog is visible again after the file dialog closes
+        try:
+            dpg.show_item("scan_dialog")
+            # Attempt to focus the path input so user can immediately start the scan
+            if hasattr(dpg, "set_item_focus"):
+                dpg.set_item_focus("scan_path_input")
+        except Exception:
+            pass
 
 def open_directory_browser():
     """Open directory browser"""
@@ -39,9 +104,10 @@ def open_scan_dialog():
     dpg.show_item("scan_dialog")
 
 def confirm_scan():
-    """Confirm and start scan by calling C++ scanner module"""
+    """Confirm and start scan using Python scanner module with thread count from settings"""
+    global scanner, scan_thread
+    
     scan_directory_path = dpg.get_value("scan_path_input")
-    scan_mode = dpg.get_value("scan_mode_radio")
     
     if not scan_directory_path:
         append_output("✗ Error: Please specify a directory path")
@@ -51,10 +117,79 @@ def confirm_scan():
         append_output(f"✗ Error: Directory not found: {scan_directory_path}")
         return
     
-    dpg.hide_item("scan_dialog")
-    append_output(f"[*] Calling scanner module...\nDirectory: {scan_directory_path}\nMode: {scan_mode}")
+    # Check if another scan is already running
+    if scan_thread and scan_thread.is_alive():
+        append_output("✗ Error: Scan already in progress")
+        return
     
-    # TODO: Call C++ scanner module (scanner.exe)
+    dpg.hide_item("scan_dialog")
+    
+    # Get thread count from settings
+    thread_count = settings.get("scan.thread_count", 4)
+    
+    append_output(f"\n{'='*60}")
+    append_output(f"[*] Starting scan")
+    append_output(f"[*] Directory: {scan_directory_path}")
+    append_output(f"[*] Thread count: {thread_count}")
+    append_output(f"{'='*60}\n")
+    
+    # Save selected path to settings
+    try:
+        settings.set("scan.last_selected_path", scan_directory_path)
+    except Exception:
+        pass
+    
+    # Run scan in background thread
+    def run_scan():
+        global scanner, scan_stats
+        try:
+            # Initialize scanner with settings
+            scanner = initialize_scanner(
+                thread_count=thread_count,
+                log_callback=append_output
+            )
+            
+            # Perform scan
+            scanner.scan_directory(scan_directory_path)
+            
+            # Store statistics for notification
+            scan_stats["files_scanned"] = scanner.total_files_scanned
+            scan_stats["threats_found"] = scanner.total_threats_found
+            
+            append_output(f"\n{'='*60}")
+            append_output("[OK] Scan finished successfully")
+            append_output(f"{'='*60}\n")
+            
+            # Show notification
+            show_scan_notification(
+                threats_found=scanner.total_threats_found,
+                files_scanned=scanner.total_files_scanned
+            )
+        except Exception as e:
+            append_output(f"\n[ERROR] Scan failed: {str(e)}\n")
+    
+    # Start scan in separate thread so UI remains responsive
+    scan_thread = threading.Thread(target=run_scan, daemon=True)
+    scan_thread.start()
+
+def use_last_scan_path(sender, app_data):
+    """Set the scan path input to the last selected path stored in settings"""
+    try:
+        last = settings.get("scan.last_selected_path", "")
+        if not last:
+            append_output("[!] No last scan path saved")
+            return
+        dpg.set_value("scan_path_input", last)
+        append_output(f"✓ Loaded last scan path: {last}")
+        # Ensure dialog is visible in case it was hidden
+        try:
+            dpg.show_item("scan_dialog")
+            if hasattr(dpg, "set_item_focus"):
+                dpg.set_item_focus("scan_path_input")
+        except Exception:
+            pass
+    except Exception as e:
+        append_output(f"[ERROR] Unable to load last scan path: {str(e)}")
 
 def cancel_scan_dialog():
     """Cancel scan dialog"""
@@ -229,6 +364,39 @@ def delete_quarantine_files():
     except Exception as e:
         append_output(f"[ERROR] Error deleting quarantine files: {str(e)}")
 
+
+def delete_quarantine_file(sender, app_data):
+    """Delete a single file from quarantine by sending request to quarantine module"""
+    try:
+        # Get filename from input
+        filename = dpg.get_value("quarantine_selected_input").strip()
+        if not filename:
+            append_output("[!] Please specify a filename to delete")
+            return
+
+        append_output(f"[*] Sending delete request for: {filename}")
+
+        # Build path to quarantine module executable (expected in modules/)
+        module_path = os.path.join(os.path.dirname(__file__), "modules", "quarantine.exe")
+        if not os.path.exists(module_path):
+            append_output(f"[!] Quarantine module not found: {module_path}")
+            append_output("[!] Ensure the quarantine module is built and available as 'quarantine.exe' in modules/")
+            return
+
+        # Call the quarantine module to delete the specific file
+        result = subprocess.run([module_path, "delete", filename], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            append_output(f"[OK] Deleted: {filename}")
+            # Refresh quarantine listing after deletion
+            refresh_quarantine()
+        else:
+            # Show module output/error
+            err = (result.stderr or result.stdout).strip()
+            append_output(f"[ERROR] Quarantine module error: {err}")
+    except Exception as e:
+        append_output(f"[ERROR] Error sending delete request: {str(e)}")
+
 def refresh_quarantine():
     """Refresh quarantine display"""
     load_quarantine_files()
@@ -368,6 +536,11 @@ if __name__ == "__main__":
                         with dpg.group(horizontal=True):
                             dpg.add_button(label="Refresh", callback=refresh_quarantine, width=120, height=35)
                             dpg.add_button(label="Delete All", callback=delete_quarantine_files, width=120, height=35)
+                        dpg.add_text("")
+                        dpg.add_text("Delete single file by name:", color=(180, 180, 180))
+                        with dpg.group(horizontal=True):
+                            dpg.add_input_text(tag="quarantine_selected_input", default_value="", width=420)
+                            dpg.add_button(label="Delete Selected", callback=delete_quarantine_file, width=120, height=35)
     
     # Scan Dialog Window
     with dpg.window(label="Scan Configuration", tag="scan_dialog", modal=True, show=False, pos=(250, 150), width=550, height=350):
@@ -376,13 +549,14 @@ if __name__ == "__main__":
         
         dpg.add_text("Directory Path:")
         with dpg.group(horizontal=True):
-            dpg.add_input_text(tag="scan_path_input", default_value="", width=380)
+            dpg.add_input_text(tag="scan_path_input", default_value="", width=260)
             dpg.add_button(label="Browse...", callback=open_directory_browser, width=120, height=24)
+            dpg.add_button(label="Use Last", callback=use_last_scan_path, width=120, height=24)
         
         dpg.add_text("")
         dpg.add_text("Scan Mode:")
-        dpg.add_radio_button(items=["Fast Scan", "Full Scan"], 
-                            default_value="Fast Scan", tag="scan_mode_radio")
+        dpg.add_radio_button(items=["Fast Scan"], 
+                    default_value="Fast Scan", tag="scan_mode_radio")
         
         dpg.add_text("")
         dpg.add_separator()

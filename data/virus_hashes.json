@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-02-01",
+  "description": "Database of malware MD5 hashes for antivirus detection",
+  "hashes": {
+    "d41d8cd98f00b204e9800998ecf8427e": {
+      "name": "Empty File (Test)",
+      "type": "test",
+      "severity": "low",
+      "description": "Test MD5 hash - represents an empty file"
+    },
+    "5d41402abc4b2a76b9719d911017c592": {
+      "name": "Test Malware 1 (MD5: hello)",
+      "type": "trojan",
+      "severity": "high",
+      "description": "Test signature for malware detection"
+    },
+    "900150983cd24fb0d6963f7d28e17f72": {
+      "name": "Test Malware 2 (MD5: password)",
+      "type": "ransomware",
+      "severity": "critical",
+      "description": "Test signature for ransomware detection"
+    },
+    "5d41402abc4b2a76b9719d911017c593": {
+      "name": "Eicar Test Virus (Variant 1)",
+      "type": "test_virus",
+      "severity": "medium",
+      "description": "EICAR antivirus test file variant"
+    },
+    "7c922c8d8e8d2b5c5c5c5c5c5c5c5c5c": {
+      "name": "Generic Trojan.Win32.Test",
+      "type": "trojan",
+      "severity": "critical",
+      "description": "Generic test trojan for detection verification"
+    },
+    "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4": {
+      "name": "Worm.Generic.Test",
+      "type": "worm",
+      "severity": "high",
+      "description": "Generic test worm signature"
+    },
+    "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5": {
+      "name": "Spyware.Generic.Test",
+      "type": "spyware",
+      "severity": "high",
+      "description": "Generic test spyware signature"
+    },
+    "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6": {
+      "name": "Adware.Generic.Test",
+      "type": "adware",
+      "severity": "medium",
+      "description": "Generic test adware signature"
+    },
+    "d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1": {
+      "name": "Backdoor.Win32.Test",
+      "type": "backdoor",
+      "severity": "critical",
+      "description": "Test backdoor detection signature"
+    },
+    "e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2": {
+      "name": "Rootkit.Generic.Test",
+      "type": "rootkit",
+      "severity": "critical",
+      "description": "Test rootkit detection signature"
+    }
+  }
+}

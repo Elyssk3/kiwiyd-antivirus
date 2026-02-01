@@ -3,6 +3,8 @@ import psutil
 import sys
 import subprocess
 from typing import Dict
+import ctypes
+from ctypes import wintypes
 
 class SystemInfo:
     """System information collector"""
@@ -112,6 +114,81 @@ class SystemInfo:
             return {
                 "Disk Info": f"Error: {str(e)}"
             }
+
+    @staticmethod
+    def get_monitors_info() -> Dict[str, str]:
+        """Get connected monitors information.
+
+        On Windows uses Win32 APIs (ctypes). On other platforms falls back to
+        tkinter to report primary screen resolution.
+        """
+        monitors = []
+        try:
+            if sys.platform == "win32":
+                user32 = ctypes.windll.user32
+
+                class RECT(ctypes.Structure):
+                    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+                class MONITORINFOEXW(ctypes.Structure):
+                    _fields_ = [("cbSize", wintypes.DWORD),
+                                ("rcMonitor", RECT),
+                                ("rcWork", RECT),
+                                ("dwFlags", wintypes.DWORD),
+                                ("szDevice", ctypes.c_wchar * 32)]
+
+                MonitorEnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC,
+                                                     ctypes.POINTER(RECT), wintypes.LPARAM)
+
+                def _callback(hMonitor, hdcMonitor, lprcMonitor, dwData):
+                    mi = MONITORINFOEXW()
+                    mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
+                    res = user32.GetMonitorInfoW(hMonitor, ctypes.byref(mi))
+                    if res:
+                        left, top = mi.rcMonitor.left, mi.rcMonitor.top
+                        right, bottom = mi.rcMonitor.right, mi.rcMonitor.bottom
+                        width = right - left
+                        height = bottom - top
+                        device = mi.szDevice
+                        primary = bool(mi.dwFlags & 1)
+                        monitors.append({
+                            "Device": device,
+                            "Resolution": f"{width}x{height}",
+                            "Primary": "Yes" if primary else "No"
+                        })
+                    return True
+
+                user32.EnumDisplayMonitors(0, 0, MonitorEnumProc(_callback), 0)
+            else:
+                # Fallback: report primary display via tkinter (common on Unix/mac)
+                try:
+                    import tkinter as tk
+                    root = tk.Tk()
+                    root.withdraw()
+                    w = root.winfo_screenwidth()
+                    h = root.winfo_screenheight()
+                    root.destroy()
+                    monitors.append({
+                        "Device": "Primary",
+                        "Resolution": f"{w}x{h}",
+                        "Primary": "Yes"
+                    })
+                except Exception:
+                    pass
+
+        except Exception:
+            monitors = []
+
+        info = {}
+        info["Monitor Count"] = str(len(monitors))
+        for i, m in enumerate(monitors, start=1):
+            info[f"Monitor {i}"] = f"{m.get('Device','')}: {m.get('Resolution','')} (Primary: {m.get('Primary','No')})"
+
+        if not monitors:
+            info["Monitor Info"] = "Unavailable"
+
+        return info
     
     @staticmethod
     def get_python_info() -> Dict[str, str]:
@@ -131,6 +208,7 @@ class SystemInfo:
             "Memory": SystemInfo.get_memory_info(),
             "Disk": SystemInfo.get_disk_info(),
             "Python": SystemInfo.get_python_info(),
+            "Monitors": SystemInfo.get_monitors_info(),
         }
     
     @staticmethod
