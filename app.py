@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
 
 from settings import Settings
-from system_info import SystemInfo #fdfd
+from system_info import SystemInfo
 
 # Initialize DearPyGui
 dpg.create_context()

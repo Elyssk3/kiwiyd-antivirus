@@ -5,7 +5,8 @@
         "auto_scan_time": "00:00",
         "auto_scan_path": "C:\\",
         "auto_scan_mode": "Fast Scan",
-        "thread_count": 4
+        "thread_count": 4,
+        "last_directory": "C:\\Users\\neonov\\Downloads\\Telegram Desktop"
     },
     "quarantine": {
         "auto_quarantine": true,

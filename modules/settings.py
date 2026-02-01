@@ -13,6 +13,7 @@ class Settings:
             "auto_scan_path": "C:\\",
             "auto_scan_mode": "Fast Scan",
             "thread_count": 4,  # Number of threads for scanning
+            "last_directory": "C:\\",
         },
         "quarantine": {
             "auto_quarantine": True,

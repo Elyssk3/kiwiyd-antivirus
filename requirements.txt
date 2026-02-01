@@ -1,3 +1,4 @@
 eel==0.16.0
-dearpygui==1.10.1
+dearpygui==2.1.1
 psutil==5.9.6
+flet==0.21.2
